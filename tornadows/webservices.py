@@ -62,7 +62,9 @@ class WebService(tornado.web.Application):
 				obj = s[1]
 				srvs.append((r"/"+str(srv),obj))
 				srvs.append((r"/"+str(srv)+"/",obj))
-			tornado.web.Application.__init__(self,srvs)
+			#tornado.web.Application.__init__(self,srvs)
+			print(srvs)
+			tornado.web.Application.__init__(self,srvs,debug=True)
 		else:
 			self._service = services
 			self._object = object

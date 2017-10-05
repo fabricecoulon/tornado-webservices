@@ -14,6 +14,8 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+DEBUG = False
+
 """ Implementation of soaphandler for webservices API 0.9.4.2 (Beta) """
 
 import tornado.httpserver
@@ -104,9 +106,11 @@ class SoapHandler(tornado.web.RequestHandler):
 		"""
 		if hasattr(options,'wsdl_hostname') and type(options.wsdl_hostname) is str:
 			address = options.wsdl_hostname
+			print("address from options")
 		else:
 			address = getattr(self, 'targetns_address',tornado.httpserver.socket.gethostbyname(tornado.httpserver.socket.gethostname()))
-		
+			#FIXME: The previous line returns 127.0.1.1, which is not working when calling from another host
+			address = self.request.headers['Host'].split(':')[0]
 		port = 80 # if you are using the port 80
 		if len(self.request.headers['Host'].split(':')) >= 2:
 			port = self.request.headers['Host'].split(':')[1]
@@ -116,6 +120,11 @@ class SoapHandler(tornado.web.RequestHandler):
 		wsdl_operation   = None
 		wsdl_args        = None
 		wsdl_methods     = []
+
+		if DEBUG:
+		    print("DEBUG: address = %s" % address)
+		    print("DEBUG: port = %s" % port)
+		    print("DEBUG: wsdl_nameservice = %s" % wsdl_nameservice)
 
 		for operations in dir(self):
 			operation = getattr(self,operations)
@@ -128,18 +137,34 @@ class SoapHandler(tornado.web.RequestHandler):
 				wsdl_data      = {'args':wsdl_args,'input':('params',wsdl_input),'output':('returns',wsdl_output),'operation':wsdl_operation}
 				wsdl_methods.append(wsdl_data)
 
-		wsdl_targetns = 'http://%s:%s/%s'%(address,port,wsdl_nameservice)
-		wsdl_location = 'http://%s:%s/%s'%(address,port,wsdl_nameservice)
 		query = self.request.query
+		if DEBUG:
+		    print("DEBUG QUERY:", self.request.query)
+		    print("DEBUG QUERY BODY:", self.request.body)
+		    print(self.request)
+
+		if self.request.protocol == 'http':
+		    wsdl_targetns = 'http://%s:%s/%s'%(address,port,wsdl_nameservice)
+		elif self.request.protocol == 'https':
+		    wsdl_targetns = 'https://%s:%s/%s'%(address,port,wsdl_nameservice)
+		else:
+		    raise Exception("Cannot generate WSDL properly, unknown protocol: %s" % self.request.protocol)
+		wsdl_location = wsdl_targetns
+
 		self.set_header('Content-Type','application/xml; charset=UTF-8')
 		if query.upper() == 'WSDL':
 			if wsdl_path == None:
+				if DEBUG:
+				    print("DEBUG: Sending WSDL to client...")
 				wsdlfile = wsdl.Wsdl(nameservice=wsdl_nameservice,
 						             targetNamespace=wsdl_targetns,
 						             methods=wsdl_methods,
 						             location=wsdl_location)
 
-				self.finish(wsdlfile.createWsdl().toxml())
+				_wsdl = wsdlfile.createWsdl().toxml()
+				if DEBUG:
+				    print(_wsdl)
+				self.finish(_wsdl)
 			else:
 				fd = open(str(wsdl_path),'r')
 				xmlWSDL = ''
@@ -156,8 +181,15 @@ class SoapHandler(tornado.web.RequestHandler):
 			self.write(soapmsg)
 			self.finish()
 		try:
+			if DEBUG:
+			    print("self.request.body = ", self.request.body)
 			self._request = self._parseSoap(self.request.body)
+			if DEBUG:
+			    print("After parseSoap")
+			    print("self.request.headers = ", self.request.headers)
 			soapaction = self.request.headers['SOAPAction'].replace('"','')
+			if DEBUG:
+			    print("soapaction = ", soapaction)
 			self.set_header('Content-Type','text/xml')
 			for operations in dir(self):
 				operation = getattr(self,operations)
@@ -172,6 +204,7 @@ class SoapHandler(tornado.web.RequestHandler):
 						self._executeOperation(operation, done, method='')
 						break
 		except Exception as detail:
+			print("Error: %s" % detail)
 			fault = soapfault('Error in web service : %s'%detail)
 			self.write(fault.getSoap().toxml())
 

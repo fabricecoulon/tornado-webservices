@@ -102,6 +102,21 @@ class PrimitiveType:
 	""" Class father for all derived types. """
 	pass
 
+class Base64Binary(PrimitiveType):
+	""" 1. XML primitive type : integer """
+	@staticmethod
+	def createElement(name,prefix='xsd'):
+		return createElementXML(name,'base64Binary')
+	@staticmethod
+	def getType(self):
+		return 'base64Binary'
+	@classmethod
+	def genType(self,v):
+		#return base64.b64decode(v)?
+		if v is None:
+		    return None
+		return str(v)
+
 class Integer(PrimitiveType):
 	""" 1. XML primitive type : integer """
 	@staticmethod

@@ -14,6 +14,8 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+DEBUG = False
+
 """ Implementation of module with classes and functions for transform python 
     classes in xml schema: 
 
@@ -50,6 +52,13 @@ from datetime import date, datetime, time
 class Property:
 	""" Class base for definition of properties of the attributes of a python class """
 	pass
+
+
+class Base64BinaryProperty(Property):
+	""" Class for definitions of Integer Property """
+	def __init__(self):
+		self.type = tornadows.xmltypes.Base64Binary
+		self.value = None
 
 class IntegerProperty(Property):
 	""" Class for definitions of Integer Property """
@@ -236,15 +245,21 @@ class ComplexType(object):
 		complextype = []
 
 		for key in dir(cls):
+			if DEBUG:
+				print("_generateXSD: key = ", key)
 			if default_attr.count(key) > 0:
 				continue
 			element = findElementFromDict(cls.__dict__,key)
 			if element == None:
 				continue
 			if isinstance(element,Property):
+				if DEBUG:
+					print("_generateXSD: Property", element)
 				xsd += element.type.createElement(str(key))
 			
-			elif isinstance(element,ComplexType): 
+			elif isinstance(element,ComplexType):
+				if DEBUG:
+					print("_generateXSD: ComplexType", element)
 				nameinstance = key
 
 				if ltype.count(self._elementInput.getName()) == 0:
@@ -304,6 +319,8 @@ class ComplexType(object):
 			return list()
 		elif isinstance(element,IntegerProperty):
 			return IntegerProperty()
+		elif isinstance(element,Base64BinaryProperty):
+			return Base64BinaryProperty()
 		elif isinstance(element,DecimalProperty):
 			return DecimalProperty()
 		elif isinstance(element,DoubleProperty):
@@ -350,9 +367,17 @@ def xml2object(xml,xsd,complex,method=''):
 	""" Function that converts a XML document in a instance of a python class """
 	namecls = complex.getName()
 	types   = xsd2dict(xsd)
+	if DEBUG:
+		print("xml2object: before xml2list")
 	lst     = xml2list(xml,namecls,types,method=method)
+	if DEBUG:
+		print("xml2object: after xml2list")
 	tps     = cls2dict(complex)
+	if DEBUG:
+		print("xml2object: after cls2dict")
 	obj     = generateOBJ(lst,namecls,tps)
+	if DEBUG:
+		print("xml2object: ", obj)
 	return obj
 
 def cls2dict(complex):
@@ -370,7 +395,8 @@ def cls2dict(complex):
 
 def xsd2dict(xsd,namespace='xsd'):
 	""" Function that creates a dictionary from a xml schema with the type of element """
-	types = ['xsd:integer','xsd:decimal','xsd:double','xsd:float','xsd:duration','xsd:date','xsd:time','xsd:dateTime','xsd:string','xsd:boolean']
+	#types = ['xsd:integer','xsd:decimal','xsd:double','xsd:float','xsd:duration','xsd:date','xsd:time','xsd:dateTime','xsd:string','xsd:boolean']
+	types = ['xsd:base64Binary', 'xsd:integer','xsd:decimal','xsd:double','xsd:float','xsd:duration','xsd:date','xsd:time','xsd:dateTime','xsd:string','xsd:boolean']
 	dct = {}
 
 	element = '%s:element'%namespace
@@ -382,6 +408,8 @@ def xsd2dict(xsd,namespace='xsd'):
 		if types.count(typ) > 0:
 			val = 'element'
 		dct[str(e.getAttribute('name'))] = (val,typ,lst)
+	if DEBUG:
+		print("xsd2dict: ", dct)
 	return dct
 
 def xml2list(xmldoc,name,types,method=''):
@@ -407,6 +435,7 @@ def xml2list(xmldoc,name,types,method=''):
 		else:
 			val = None
 			if len(a.childNodes) > 0:
+				# FIXME: convert add new type for base64binary
 				val = convert(typxml,str(a.childNodes[0].nodeValue))
 				# Convert str to bool.
 				if val == 'true':
@@ -414,15 +443,21 @@ def xml2list(xmldoc,name,types,method=''):
 				elif val == 'false':
 					val = False
 			lst.append((str(a.nodeName),val,isarray))
+	if DEBUG:
+		print("xml2list: ", lst)
 	return lst
 
 def generateOBJ(d,namecls,types):
 	""" Function that creates a object from a xml document """
+	if DEBUG:
+		print("generateOBJ: In")
 	dct = {}
 	lst = []
 	for a in d:
 		name  = a[0]
 		value = a[1]
+		if DEBUG:
+			print("name, val = ", name, value)
 		isarray = a[2]
 		if isinstance(value,list):
 			o = generateOBJ(value,name,types)
@@ -437,6 +472,8 @@ def generateOBJ(d,namecls,types):
 				dct[name] = createProperty(typ,value)
 			else:
 				dct[name] = value
+	if DEBUG:
+		print("generateOBJ: Out")
 	return type(namecls,(ComplexType,),dct)
 	
 def createProperty(typ,value):
@@ -445,6 +482,9 @@ def createProperty(typ,value):
 	if isinstance(typ,IntegerProperty):
 		ct = IntegerProperty()
 		ct.value = tornadows.xmltypes.Integer.genType(value)
+	elif isinstance(typ,Base64BinaryProperty):
+		ct = Base64BinaryProperty()
+		ct.value = tornadows.xmltypes.Base64Binary.genType(value)
 	elif isinstance(typ,DecimalProperty):
 		ct = DecimalProperty()
 		ct.value = tornadows.xmltypes.Decimal.genType(value)
@@ -494,7 +534,11 @@ def findElementFromDict(dictionary,key):
 
 def convert(typeelement,value):
 	""" Function that converts a value depending his type """
-	if typeelement == 'xsd:integer' or typeelement == 'int':	
+	if DEBUG:
+		print("convert: ", typeelement, value)
+	if typeelement == 'xsd:base64Binary':
+		return str(value)
+	elif typeelement == 'xsd:integer' or typeelement == 'int':
 		return int(value)
 	elif typeelement == 'xsd:decimal':
 		return float(value)
@@ -531,6 +575,8 @@ def convert(typeelement,value):
 		return str(value)
 	elif typeelement == 'xsd:boolean' or typeelement == 'bool':
 		return str(value).lower()
+	else:
+		raise Exception("Unknown typeelement: %s" % typeelement)
 
 def createPythonType2XMLType(pyType):
 	""" Function that creates a xml type from a python type """
